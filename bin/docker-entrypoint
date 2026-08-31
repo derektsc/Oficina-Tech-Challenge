@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+bundle check || bundle install
+
+if [ -f tmp/pids/server.pid ]; then
+  rm -f tmp/pids/server.pid
+fi
+
+case "${1:-}" in
+  bin/rails|rails)
+    bundle exec rails db:prepare
+    ;;
+esac
+
+exec "$@"

@@ -1,0 +1,373 @@
+openapi: 3.0.1
+info:
+  title: API Oficina Mecânica
+  description: MVP do Sistema Integrado de Atendimento e Execução de Serviços.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+paths:
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login administrativo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, example: admin@oficina.test }
+                password: { type: string, example: oficina123 }
+      responses:
+        "200":
+          description: JWT emitido
+        "401":
+          description: Credenciais inválidas
+  /api/v1/admin/customers:
+    get:
+      tags: [Admin - Clientes]
+      security: [{ bearerAuth: [] }]
+      summary: Listar clientes
+      responses:
+        "200": { description: Lista de clientes }
+    post:
+      tags: [Admin - Clientes]
+      security: [{ bearerAuth: [] }]
+      summary: Criar cliente
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customer:
+                  type: object
+                  properties:
+                    name: { type: string }
+                    document: { type: string, example: "52998224725" }
+                    email: { type: string }
+                    phone: { type: string }
+      responses:
+        "201": { description: Criado }
+        "422": { description: Validação }
+  /api/v1/admin/customers/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Admin - Clientes]
+      security: [{ bearerAuth: [] }]
+      summary: Detalhar cliente
+      responses:
+        "200": { description: Cliente }
+    put:
+      tags: [Admin - Clientes]
+      security: [{ bearerAuth: [] }]
+      summary: Atualizar cliente
+      responses:
+        "200": { description: Atualizado }
+    delete:
+      tags: [Admin - Clientes]
+      security: [{ bearerAuth: [] }]
+      summary: Remover cliente
+      responses:
+        "204": { description: Removido }
+  /api/v1/admin/vehicles:
+    get:
+      tags: [Admin - Veículos]
+      security: [{ bearerAuth: [] }]
+      summary: Listar veículos
+      parameters:
+        - in: query
+          name: customer_id
+          schema: { type: integer }
+      responses:
+        "200": { description: Lista }
+    post:
+      tags: [Admin - Veículos]
+      security: [{ bearerAuth: [] }]
+      summary: Criar veículo
+      responses:
+        "201": { description: Criado }
+  /api/v1/admin/vehicles/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Admin - Veículos]
+      security: [{ bearerAuth: [] }]
+      summary: Detalhar veículo
+      responses:
+        "200": { description: Veículo }
+    put:
+      tags: [Admin - Veículos]
+      security: [{ bearerAuth: [] }]
+      summary: Atualizar veículo
+      responses:
+        "200": { description: Atualizado }
+    delete:
+      tags: [Admin - Veículos]
+      security: [{ bearerAuth: [] }]
+      summary: Remover veículo
+      responses:
+        "204": { description: Removido }
+  /api/v1/admin/catalog_services:
+    get:
+      tags: [Admin - Serviços]
+      security: [{ bearerAuth: [] }]
+      summary: Listar serviços do catálogo
+      responses:
+        "200": { description: Lista }
+    post:
+      tags: [Admin - Serviços]
+      security: [{ bearerAuth: [] }]
+      summary: Criar serviço
+      responses:
+        "201": { description: Criado }
+  /api/v1/admin/catalog_services/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Admin - Serviços]
+      security: [{ bearerAuth: [] }]
+      summary: Detalhar serviço
+      responses:
+        "200": { description: Serviço }
+    put:
+      tags: [Admin - Serviços]
+      security: [{ bearerAuth: [] }]
+      summary: Atualizar serviço
+      responses:
+        "200": { description: Atualizado }
+    delete:
+      tags: [Admin - Serviços]
+      security: [{ bearerAuth: [] }]
+      summary: Remover serviço
+      responses:
+        "204": { description: Removido }
+  /api/v1/admin/parts:
+    get:
+      tags: [Admin - Peças]
+      security: [{ bearerAuth: [] }]
+      summary: Listar peças e insumos
+      responses:
+        "200": { description: Lista com flag below_minimum }
+    post:
+      tags: [Admin - Peças]
+      security: [{ bearerAuth: [] }]
+      summary: Criar peça
+      responses:
+        "201": { description: Criado }
+  /api/v1/admin/parts/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Admin - Peças]
+      security: [{ bearerAuth: [] }]
+      summary: Detalhar peça
+      responses:
+        "200": { description: Peça }
+    put:
+      tags: [Admin - Peças]
+      security: [{ bearerAuth: [] }]
+      summary: Atualizar peça e estoque
+      responses:
+        "200": { description: Atualizado }
+    delete:
+      tags: [Admin - Peças]
+      security: [{ bearerAuth: [] }]
+      summary: Remover peça
+      responses:
+        "204": { description: Removido }
+  /api/v1/admin/service_orders:
+    get:
+      tags: [Admin - Ordens de Serviço]
+      security: [{ bearerAuth: [] }]
+      summary: Listar OS
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        "200": { description: Lista }
+    post:
+      tags: [Admin - Ordens de Serviço]
+      security: [{ bearerAuth: [] }]
+      summary: Criar OS identificando cliente por CPF/CNPJ
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                document: { type: string }
+                customer_name: { type: string }
+                customer:
+                  type: object
+                  properties:
+                    name: { type: string }
+                    document: { type: string }
+                    email: { type: string }
+                vehicle:
+                  type: object
+                  properties:
+                    plate: { type: string, example: ABC1D23 }
+                    brand: { type: string }
+                    model: { type: string }
+                    year: { type: integer }
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      item_type: { type: string, enum: [service, part] }
+                      catalog_service_id: { type: integer }
+                      part_id: { type: integer }
+                      quantity: { type: integer }
+      responses:
+        "201": { description: OS recebida com orçamento calculado }
+  /api/v1/admin/service_orders/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Admin - Ordens de Serviço]
+      security: [{ bearerAuth: [] }]
+      summary: Detalhar OS
+      responses:
+        "200": { description: OS }
+    put:
+      tags: [Admin - Ordens de Serviço]
+      security: [{ bearerAuth: [] }]
+      summary: Atualizar notas e itens (antes do orçamento)
+      responses:
+        "200": { description: Atualizado }
+  /api/v1/admin/service_orders/{id}/start_diagnosis:
+    post:
+      tags: [Admin - Ordens de Serviço]
+      security: [{ bearerAuth: [] }]
+      summary: Iniciar diagnóstico
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Status em diagnóstico }
+  /api/v1/admin/service_orders/{id}/send_budget:
+    post:
+      tags: [Admin - Ordens de Serviço]
+      security: [{ bearerAuth: [] }]
+      summary: Enviar orçamento ao cliente
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Aguardando aprovação }
+  /api/v1/admin/service_orders/{id}/finish:
+    post:
+      tags: [Admin - Ordens de Serviço]
+      security: [{ bearerAuth: [] }]
+      summary: Finalizar execução
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Finalizada }
+  /api/v1/admin/service_orders/{id}/deliver:
+    post:
+      tags: [Admin - Ordens de Serviço]
+      security: [{ bearerAuth: [] }]
+      summary: Registrar entrega do veículo
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Entregue }
+  /api/v1/admin/metrics/average_execution_time:
+    get:
+      tags: [Admin - Métricas]
+      security: [{ bearerAuth: [] }]
+      summary: Tempo médio de execução das OS
+      responses:
+        "200": { description: Métrica }
+  /api/v1/public/service_orders:
+    get:
+      tags: [Cliente]
+      summary: Consultar OS do cliente por CPF/CNPJ
+      parameters:
+        - in: query
+          name: document
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Lista pública }
+  /api/v1/public/service_orders/{public_token}:
+    get:
+      tags: [Cliente]
+      summary: Acompanhar OS pelo token
+      parameters:
+        - in: path
+          name: public_token
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Progresso da OS }
+  /api/v1/public/service_orders/{public_token}/approve:
+    post:
+      tags: [Cliente]
+      summary: Aprovar orçamento
+      parameters:
+        - in: path
+          name: public_token
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Em execução }
+  /api/v1/public/service_orders/{public_token}/reject:
+    post:
+      tags: [Cliente]
+      summary: Rejeitar orçamento
+      parameters:
+        - in: path
+          name: public_token
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Volta para diagnóstico }

@@ -1,0 +1,15 @@
+/.bundle
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+/storage/*
+!/storage/.keep
+/coverage
+.env
+*.log
+.byebug_history
+config/master.key
+/vendor/bundle
+
+/docs
