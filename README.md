@@ -17,6 +17,12 @@ Linguagem ubíqua, bounded contexts, agregado da OS, Event Storming e máquina d
 
 **[Diagramas DDD — Miro](https://miro.com/app/board/uXjVHsDM-SM=/?share_link_id=386665499309)**
 
+**[Vídeo da Fase 1 — YouTube](https://www.youtube.com/watch?v=RyrMkk2pN3Q)**
+
+Decisões de arquitetura, contexto de negócio e justificativas técnicas (incluindo persistência em PostgreSQL) estão no documento:
+
+**[Grupo 110 — Fase 1 — Arquitetura de Software (PDF)](Grupo110-Fase1-Derek-TechChallenge-ArquiteturaSoftware.pdf)**
+
 ## Decisões de arquitetura — persistência (PostgreSQL)
 
 ### Contexto de negócio
