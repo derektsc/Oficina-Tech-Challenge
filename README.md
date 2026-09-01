@@ -1,4 +1,4 @@
-# Oficina API — Tech Challenge (MVP)
+# Oficina API - Tech Challenge (MVP)
 
 Back-end monolítico em **Ruby on Rails 8** para o Sistema Integrado de Atendimento e Execução de Serviços de uma oficina mecânica. O MVP cobre gestão de clientes, veículos, catálogo de serviços, peças/insumos com estoque e o ciclo de vida da **ordem de serviço (OS)**, com orçamento automático e aprovação pelo cliente.
 
