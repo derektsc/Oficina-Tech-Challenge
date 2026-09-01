@@ -1,4 +1,4 @@
-# Oficina API - Tech Challenge (MVP)
+# Oficina API — Tech Challenge (Fase 1)
 
 Back-end monolítico em **Ruby on Rails 8** para o Sistema Integrado de Atendimento e Execução de Serviços de uma oficina mecânica. O MVP cobre gestão de clientes, veículos, catálogo de serviços, peças/insumos com estoque e o ciclo de vida da **ordem de serviço (OS)**, com orçamento automático e aprovação pelo cliente.
 
@@ -11,15 +11,21 @@ Back-end monolítico em **Ruby on Rails 8** para o Sistema Integrado de Atendime
 - Proteger APIs administrativas com JWT.
 - Documentar a API (Swagger) e executar o ambiente com Docker.
 
+## Documentação DDD e diagramas
+
+Linguagem ubíqua, bounded contexts, agregado da OS, Event Storming e máquina de status estão no Miro:
+
+**[Diagramas DDD — Miro](https://miro.com/app/board/uXjVHsDM-SM=/?share_link_id=386665499309)**
+
 ## Por que PostgreSQL?
 
-Foi escolhido o **PostgreSQL** porque o domínio é relacional (cliente, veículo, OS, itens, estoque) e exige:
+O domínio é relacional (cliente, veículo, OS, itens, estoque) e exige:
 
 - integridade referencial (foreign keys) para não perder histórico;
 - transações ACID no débito de estoque na aprovação do orçamento;
 - índices únicos em CPF/CNPJ, placa, SKU e token público da OS.
 
-É um banco maduro, bem suportado pelo Rails e adequado a um monolito MVP, com caminho claro para crescer (JSON, relatórios, réplicas).
+PostgreSQL é maduro, bem suportado pelo Rails e adequado a um monolito MVP, com caminho claro para crescer (JSON, relatórios, réplicas).
 
 ## Arquitetura em camadas (DDD leve)
 
@@ -30,33 +36,71 @@ Foi escolhido o **PostgreSQL** porque o domínio é relacional (cliente, veícul
 | Infra | `app/models`, `db` | Persistência ActiveRecord |
 | Interface | `app/controllers`, `app/serializers` | HTTP REST + JWT |
 
-Documentação DDD (linguagem ubíqua, bounded contexts e event storming): [`docs/ddd.md`](docs/ddd.md).
-
 ## Requisitos
 
-- Docker e Docker Compose
-- (Opcional) Ruby 3.3.6 e PostgreSQL 16 para execução sem container
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (inclui Docker Compose)
+- Git
 
-## Execução local (Docker)
+Para rodar sem container (opcional): Ruby 3.3.6, PostgreSQL 16 e Bundler. Copie `.env.example` para `.env` e ajuste as variáveis.
+
+## Primeira execução (Docker)
+
+### 1. Clonar o repositório
+
+```bash
+git clone <url-do-repositorio>
+cd Oficina-Tech-Challenge
+```
+
+### 2. Subir os containers
 
 ```bash
 docker compose up --build
 ```
 
-Na primeira subida o entrypoint executa `db:prepare`. Depois, carregue os dados de demonstração:
+Na **primeira** subida, o build da imagem pode levar alguns minutos. O entrypoint executa `db:prepare` automaticamente (cria o banco e roda as migrations). Aguarde até ver algo como `Listening on http://0.0.0.0:3000` nos logs.
+
+> **Windows:** o projeto usa bind mount (`.:app`). O entrypoint corrige CRLF nos scripts `bin/*` na subida — não é necessário alterar nada manualmente.
+
+### 3. Carregar dados de demonstração
+
+Com os containers rodando, em **outro terminal**:
 
 ```bash
 docker compose exec app bundle exec rails db:seed
 ```
 
-- API: http://localhost:3000
-- Swagger: http://localhost:3000/api-docs
-- Healthcheck: http://localhost:3000/up
+Isso cria o usuário admin, um cliente, veículo, serviços do catálogo e peças com estoque.
+
+### 4. Validar que está funcionando
+
+| Recurso | URL |
+| --- | --- |
+| API | http://localhost:3000 |
+| Swagger (documentação interativa) | http://localhost:3000/api-docs |
+| Healthcheck | http://localhost:3000/up |
+
+No Swagger, faça login em `POST /api/v1/auth/login` com as credenciais abaixo e use o token retornado no botão **Authorize** (formato: `Bearer <token>`).
 
 ### Credenciais de seed
 
-- E-mail: `admin@oficina.test`
-- Senha: `oficina123`
+| Campo | Valor |
+| --- | --- |
+| E-mail | `admin@oficina.test` |
+| Senha | `oficina123` |
+
+### Comandos úteis no dia a dia
+
+```bash
+# Parar os containers
+docker compose down
+
+# Parar e remover volumes (reset completo do banco)
+docker compose down -v
+
+# Ver logs da aplicação
+docker compose logs -f app
+```
 
 ## Fluxo rápido da OS
 
@@ -86,19 +130,12 @@ docker compose run --rm --no-deps app bundle exec brakeman -q
 docker compose run --rm --no-deps app bundle exec bundle-audit check --update
 ```
 
-Relatório da análise: [`docs/vulnerabilidades.md`](docs/vulnerabilidades.md).
-
-## Entrega acadêmica
-
-O enunciado pede repositório **privado** com acesso ao usuário GitHub `soat-architecture`, vídeo de até 15 minutos, documentação DDD (Miro ou equivalente) e PDF de entrega com participantes. Este código cobre o backend, Docker, Swagger, testes e a base da documentação DDD.
-
 ## Estrutura de pastas relevante
 
 ```
 app/lib/domain       regras de negócio
 app/lib/use_cases    orquestração dos fluxos
-app/models          persistência
-app/controllers     API REST
-swagger/v1          OpenAPI
-docs                DDD e segurança
+app/models           persistência
+app/controllers      API REST
+swagger/v1           OpenAPI
 ```
