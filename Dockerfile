@@ -18,4 +18,4 @@ RUN sed -i 's/\r$//' /usr/bin/docker-entrypoint bin/rails bin/rake bin/setup && 
 EXPOSE 3000
 
 ENTRYPOINT ["docker-entrypoint"]
-CMD ["bin/rails", "server", "-b", "0.0.0.0"]
+CMD ["bundle", "exec", "rails", "server", "-b", "0.0.0.0"]

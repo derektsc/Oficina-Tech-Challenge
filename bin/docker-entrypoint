@@ -7,10 +7,24 @@ if [ -f tmp/pids/server.pid ]; then
   rm -f tmp/pids/server.pid
 fi
 
-case "${1:-}" in
-  bin/rails|rails)
-    bundle exec rails db:prepare
-    ;;
-esac
+# Windows bind mount pode reintroduzir CRLF nos binstubs
+for script in bin/rails bin/rake bin/setup; do
+  if [ -f "$script" ]; then
+    sed -i 's/\r$//' "$script"
+    chmod +x "$script"
+  fi
+done
+
+should_prepare=false
+if [ "${1:-}" = "bin/rails" ] && [ "${2:-}" = "server" ]; then
+  should_prepare=true
+fi
+if [ "${1:-}" = "bundle" ] && [ "${2:-}" = "exec" ] && [ "${3:-}" = "rails" ] && [ "${4:-}" = "server" ]; then
+  should_prepare=true
+fi
+
+if [ "$should_prepare" = true ]; then
+  bundle exec rails db:prepare
+fi
 
 exec "$@"
