@@ -48,7 +48,7 @@ Para rodar sem container (opcional): Ruby 3.3.6, PostgreSQL 16 e Bundler. Copie 
 ### 1. Clonar o repositório
 
 ```bash
-git clone <url-do-repositorio>
+git clone https://github.com/derektsc/Oficina-Tech-Challenge.git
 cd Oficina-Tech-Challenge
 ```
 
