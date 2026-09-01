@@ -15,23 +15,23 @@ Back-end monolítico em **Ruby on Rails 8** para o Sistema Integrado de Atendime
 
 Linguagem ubíqua, bounded contexts, agregado da OS, Event Storming e máquina de status estão no Miro:
 
-**[Diagramas DDD — Miro](https://miro.com/app/board/uXjVHsDM-SM=/?share_link_id=386665499309)**
+**[Diagramas DDD - Miro](https://miro.com/app/board/uXjVHsDM-SM=/?share_link_id=386665499309)**
 
-**[Vídeo da Fase 1 — YouTube](https://www.youtube.com/watch?v=RyrMkk2pN3Q)**
+**[Vídeo da Fase 1 - YouTube](https://www.youtube.com/watch?v=RyrMkk2pN3Q)**
 
 Decisões de arquitetura, contexto de negócio e justificativas técnicas (incluindo persistência em PostgreSQL) estão no documento:
 
-**[Grupo 110 — Fase 1 — Arquitetura de Software (PDF)](Grupo110-Fase1-Derek-TechChallenge-ArquiteturaSoftware.pdf)**
+**[Grupo 110 - Fase 1 - Arquitetura de Software (PDF)](Grupo110-Fase1-Derek-TechChallenge-ArquiteturaSoftware.pdf)**
 
-## Decisões de arquitetura — persistência (PostgreSQL)
+## Decisões de arquitetura - persistência (PostgreSQL)
 
 ### Contexto de negócio
 
 O cenário do challenge descreve uma oficina que opera com planilhas e processos manuais. Isso gera problemas concretos que a persistência precisa resolver:
 
-- **Perda de histórico:** uma OS ligada ao cliente e ao veículo deve permanecer consultável mesmo após a entrega — o dono pode voltar meses depois com o mesmo carro.
+- **Perda de histórico:** uma OS ligada ao cliente e ao veículo deve permanecer consultável mesmo após a entrega - o dono pode voltar meses depois com o mesmo carro.
 - **Concorrência no estoque:** quando o cliente aprova o orçamento, as peças são debitadas; duas aprovações simultâneas não podem consumir o mesmo item sem saldo.
-- **Identificadores únicos no negócio:** CPF/CNPJ, placa, SKU e número da OS são chaves naturais do domínio — duplicatas quebram operação e auditoria.
+- **Identificadores únicos no negócio:** CPF/CNPJ, placa, SKU e número da OS são chaves naturais do domínio - duplicatas quebram operação e auditoria.
 - **Valores monetários confiáveis:** orçamento, preços de serviço e peças precisam de precisão decimal estável, sem erro de arredondamento.
 - **Rastreabilidade do fluxo:** cada transição de status da OS (`received` → `delivered`) registra timestamps usados em métricas operacionais (ex.: tempo médio de execução).
 
@@ -52,7 +52,7 @@ Esses requisitos apontam a um modelo **fortemente relacional**, com **consistên
 
 | Opção | Por que não foi escolhida |
 | --- | --- |
-| **SQLite** | Adequado para protótipo local, mas concorrência de escrita limitada. O fluxo de aprovação usa `Part.lock` e débito transacional — cenário sensível quando vários operadores e clientes interagem ao mesmo tempo. Não é o padrão de produção para APIs multiusuário. |
+| **SQLite** | Adequado para protótipo local, mas concorrência de escrita limitada. O fluxo de aprovação usa `Part.lock` e débito transacional - cenário sensível quando vários operadores e clientes interagem ao mesmo tempo. Não é o padrão de produção para APIs multiusuário. |
 | **MySQL / MariaDB** | Viável tecnicamente, mas o ecossistema Rails + PostgreSQL é mais homogêneo (tipos, migrations, ferramentas). Para este MVP, o ganho de trocar não compensa o custo de divergir do stack mais comum em projetos Rails. |
 | **MongoDB / NoSQL** | O domínio é relacional por natureza (agregado da OS referencia cliente, veículo, catálogo e peças). Modelar isso em documentos exige duplicação ou joins na aplicação, enfraquecendo integridade referencial e consistência de estoque. |
 | **Redis / cache como fonte primária** | Excelente para cache ou filas, mas não substitui persistência durável e transacional do histórico de OS e movimentação de estoque. |
@@ -63,8 +63,8 @@ PostgreSQL atende os requisitos de negócio e técnicos do MVP com o menor risco
 
 **Fundamento de negócio**
 
-- Garante que **uma OS nunca fica “órfã”**: foreign keys entre `customers`, `vehicles`, `service_orders` e `service_order_items` impedem apagar ou referenciar entidades inconsistentes — o histórico do cliente no negócio fica preservado.
-- O débito de estoque na aprovação (`ApproveBudget`) roda dentro de `ActiveRecord::Base.transaction` com `Part.lock`: se o saldo não cobre a quantidade, a transação falha e **nem o status da OS nem o estoque ficam inconsistentes** — evita prometer um reparo sem peça disponível.
+- Garante que **uma OS nunca fica “órfã”**: foreign keys entre `customers`, `vehicles`, `service_orders` e `service_order_items` impedem apagar ou referenciar entidades inconsistentes - o histórico do cliente no negócio fica preservado.
+- O débito de estoque na aprovação (`ApproveBudget`) roda dentro de `ActiveRecord::Base.transaction` com `Part.lock`: se o saldo não cobre a quantidade, a transação falha e **nem o status da OS nem o estoque ficam inconsistentes** - evita prometer um reparo sem peça disponível.
 - Índices únicos em `document`, `plate`, `sku`, `number` e `public_token` espelham **regras operacionais da oficina** (um CPF, uma placa, um SKU, um número de OS).
 - Timestamps (`execution_started_at`, `finished_at`, etc.) ficam no mesmo registro da OS, permitindo métricas como tempo médio de execução sem reconstruir histórico manualmente.
 
@@ -73,7 +73,7 @@ PostgreSQL atende os requisitos de negócio e técnicos do MVP com o menor risco
 - **ACID e locking:** suporte nativo a transações e `SELECT … FOR UPDATE` (usado via `lock` no ActiveRecord) para concorrência segura no estoque.
 - **Integridade referencial:** constraints declaradas no schema (`add_foreign_key` em todas as relações do domínio).
 - **Tipos adequados ao domínio:** `decimal(12,2)` para dinheiro; `string` com índices para identificadores de negócio.
-- **Stack Rails:** adapter `postgresql` nativo, `db:prepare` no Docker, migrations e `schema.rb` versionados — onboarding e CI simples.
+- **Stack Rails:** adapter `postgresql` nativo, `db:prepare` no Docker, migrations e `schema.rb` versionados - onboarding e CI simples.
 - **Evolução sem troca de banco:** JSONB para campos flexíveis futuros, views/materialized views para relatórios, réplicas de leitura e particionamento se a oficina escalar.
 
 ### Como isso aparece no código
@@ -128,7 +128,7 @@ docker compose up --build
 
 Na **primeira** subida, o build da imagem pode levar alguns minutos. O entrypoint executa `db:prepare` automaticamente (cria o banco e roda as migrations). Aguarde até ver algo como `Listening on http://0.0.0.0:3000` nos logs.
 
-> **Windows:** o projeto usa bind mount (`.:app`). O entrypoint corrige CRLF nos scripts `bin/*` na subida — não é necessário alterar nada manualmente.
+> **Windows:** o projeto usa bind mount (`.:app`). O entrypoint corrige CRLF nos scripts `bin/*` na subida - não é necessário alterar nada manualmente.
 
 ### 3. Carregar dados de demonstração
 
