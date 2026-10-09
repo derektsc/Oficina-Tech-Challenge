@@ -1,0 +1,8 @@
+<p>Olá <%= @order.customer.name %>,</p>
+<p>A ordem de serviço <strong><%= @order.number %></strong> foi atualizada.</p>
+<ul>
+  <li>Status: <%= @order.status_label %></li>
+  <li>Veículo: <%= @order.vehicle.plate %> (<%= @order.vehicle.brand %> <%= @order.vehicle.model %>)</li>
+  <li>Orçamento: R$ <%= @order.budget_total %></li>
+</ul>
+<p>Acompanhe pelo identificador <code><%= @order.public_token %></code>.</p>

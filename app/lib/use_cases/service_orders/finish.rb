@@ -9,6 +9,7 @@ module UseCases
 
       def call
         @order.transition_to!(::Domain::ServiceOrders::Status::FINISHED)
+        NotifyStatus.call(@order)
         @order
       end
     end

@@ -1,0 +1,106 @@
+name: CI/CD
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: oficina-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Testes
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: oficina
+          POSTGRES_PASSWORD: oficina
+          POSTGRES_DB: oficina_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U oficina -d oficina_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      RAILS_ENV: test
+      CI: "true"
+      DATABASE_URL: postgres://oficina:oficina@localhost:5432/oficina_test
+      SECRET_KEY_BASE: test-secret-key-base-change-in-production-32bytes-minxx
+      JWT_SECRET: test-jwt-secret
+      INTEGRATION_TOKEN: test-integration-token
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependências de sistema
+        run: sudo apt-get update && sudo apt-get install -y libpq-dev libyaml-dev
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3.6"
+          bundler-cache: true
+      - name: Preparar banco
+        run: bundle exec rails db:prepare
+      - name: RSpec
+        run: bundle exec rspec
+
+  deploy:
+    name: Build e deploy
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build da imagem
+        run: docker build --target runtime --build-arg BUNDLE_WITHOUT="development test" -t oficina-api:local .
+
+      - name: Instalar kind, kubectl e Terraform
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
+          chmod +x /tmp/kind
+          sudo mv /tmp/kind /usr/local/bin/kind
+          curl -fsSL -o /tmp/kubectl https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl
+          chmod +x /tmp/kubectl
+          sudo mv /tmp/kubectl /usr/local/bin/kubectl
+          curl -fsSL -o /tmp/terraform.zip https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip
+          sudo unzip -o /tmp/terraform.zip -d /usr/local/bin
+          kind version
+          kubectl version --client=true
+          terraform version
+
+      - name: Provisionar cluster e banco
+        run: |
+          terraform -chdir=infra init -input=false
+          terraform -chdir=infra apply -auto-approve -input=false
+
+      - name: Carregar imagem no cluster
+        run: kind load docker-image oficina-api:local --name oficina
+
+      - name: Aplicar manifestos e subir a API
+        run: bash k8s/apply.sh
+
+      - name: Consumir a API no cluster
+        run: |
+          set -euo pipefail
+          kubectl -n oficina exec deploy/oficina-api -- env SEED_DEMO=true bundle exec rails db:seed
+          kubectl -n oficina port-forward svc/oficina-api 3000:3000 >/tmp/port-forward.log 2>&1 &
+          for _ in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:3000/up; then
+              break
+            fi
+            sleep 3
+          done
+          curl -sf http://127.0.0.1:3000/up
+          TOKEN="$(curl -sf -X POST http://127.0.0.1:3000/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"admin@oficina.test","password":"oficina123"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+          test -n "$TOKEN"
+          curl -sf -H "Authorization: Bearer $TOKEN" http://127.0.0.1:3000/api/v1/admin/service_orders
+          kubectl -n oficina get hpa oficina-api

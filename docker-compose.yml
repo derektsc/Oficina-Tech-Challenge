@@ -1,4 +1,10 @@
 services:
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
   db:
     image: postgres:16-alpine
     environment:
@@ -17,10 +23,14 @@ services:
       retries: 10
 
   app:
-    build: .
+    build:
+      context: .
+      target: dev
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     ports:
       - "3000:3000"
     environment:
@@ -28,11 +38,17 @@ services:
       DATABASE_URL: postgres://oficina:oficina@db:5432/oficina_development
       SECRET_KEY_BASE: local-dev-secret-key-base-change-in-production-32bytes-min
       JWT_SECRET: local-dev-jwt-secret-change-in-production
+      INTEGRATION_TOKEN: local-dev-integration-token
+      SMTP_ADDRESS: mailpit
+      SMTP_PORT: "1025"
+      MAIL_FROM: "Oficina <oficina@local.test>"
     volumes:
       - .:/app
 
   test:
-    build: .
+    build:
+      context: .
+      target: dev
     depends_on:
       db:
         condition: service_healthy

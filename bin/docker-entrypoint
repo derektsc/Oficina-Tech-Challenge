@@ -1,19 +1,22 @@
 #!/bin/sh
 set -eu
 
-bundle check || bundle install
+if [ "${RAILS_ENV:-development}" != "production" ]; then
+  bundle check || bundle install
+fi
 
 if [ -f tmp/pids/server.pid ]; then
   rm -f tmp/pids/server.pid
 fi
 
-# Windows bind mount pode reintroduzir CRLF nos binstubs
-for script in bin/rails bin/rake bin/setup; do
-  if [ -f "$script" ]; then
-    sed -i 's/\r$//' "$script"
-    chmod +x "$script"
-  fi
-done
+if [ "${RAILS_ENV:-development}" != "production" ]; then
+  for script in bin/rails bin/rake bin/setup; do
+    if [ -f "$script" ]; then
+      sed -i 's/\r$//' "$script"
+      chmod +x "$script"
+    fi
+  done
+fi
 
 should_prepare=false
 if [ "${1:-}" = "bin/rails" ] && [ "${2:-}" = "server" ]; then

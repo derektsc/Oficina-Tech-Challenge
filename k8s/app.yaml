@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oficina-api
+  namespace: oficina
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oficina-api
+  template:
+    metadata:
+      labels:
+        app: oficina-api
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -p 5432 -U oficina; do echo aguardando postgres; sleep 2; done
+      containers:
+        - name: api
+          image: oficina-api:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: oficina-config
+            - secretRef:
+                name: oficina-secret
+          startupProbe:
+            httpGet:
+              path: /up
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /up
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /up
+              port: http
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oficina-api
+  namespace: oficina
+spec:
+  type: NodePort
+  selector:
+    app: oficina-api
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      nodePort: 30080

@@ -1,209 +1,228 @@
-# Oficina API - Tech Challenge (Fase 1)
+# Oficina API — Tech Challenge Fase 2
 
-Back-end monolítico em **Ruby on Rails 8** para o Sistema Integrado de Atendimento e Execução de Serviços de uma oficina mecânica. O MVP cobre gestão de clientes, veículos, catálogo de serviços, peças/insumos com estoque e o ciclo de vida da **ordem de serviço (OS)**, com orçamento automático e aprovação pelo cliente.
+Evolução do monolito Rails 8 da fase 1 para uma oficina que precisa de fila operacional, notificação externa de orçamento, aviso de status por e-mail e um ambiente que sobe sozinho: Docker, Kubernetes com autoscaling, Terraform e pipeline de CI/CD.
 
-## Objetivos
+O domínio da fase 1 permanece: cliente, veículo, catálogo, estoque e o ciclo da ordem de serviço (OS).
 
-- Identificar o cliente por CPF/CNPJ e cadastrar o veículo (placa, marca, modelo, ano).
-- Montar a OS com serviços e peças; calcular o orçamento automaticamente.
-- Acompanhar o status da OS: Recebida → Em diagnóstico → Aguardando aprovação → Em execução → Finalizada → Entregue.
-- Expor API pública para o cliente consultar progresso e autorizar/rejeitar o orçamento.
-- Proteger APIs administrativas com JWT.
-- Documentar a API (Swagger) e executar o ambiente com Docker.
+Recebida → Em diagnóstico → Aguardando aprovação → Em execução → Finalizada → Entregue
 
-## Documentação DDD e diagramas
+## Objetivos desta fase
 
-Linguagem ubíqua, bounded contexts, agregado da OS, Event Storming e máquina de status estão no Miro:
+- Manter a abertura da OS e a consulta de status.
+- Receber aprovação ou recusa do orçamento como notificação externa.
+- Listar a fila operacional na ordem pedida, sem apagar OS finalizada ou entregue.
+- Avisar o cliente por e-mail a cada mudança de status.
+- Subir a API e o PostgreSQL em Kubernetes, com HPA por CPU e memória.
+- Provisionar o cluster local e o banco com Terraform.
+- Rodar testes, build da imagem e deploy no cluster pela pipeline.
 
-**[Diagramas DDD - Miro](https://miro.com/app/board/uXjVHsDM-SM=/?share_link_id=386665499309)**
+## Arquitetura
 
-**[Vídeo da Fase 1 - YouTube](https://www.youtube.com/watch?v=RyrMkk2pN3Q)**
-
-Decisões de arquitetura, contexto de negócio e justificativas técnicas (incluindo persistência em PostgreSQL) estão no documento:
-
-**[Grupo 110 - Fase 1 - Arquitetura de Software (PDF)](Grupo110-Fase1-Derek-TechChallenge-ArquiteturaSoftware.pdf)**
-
-## Decisões de arquitetura - persistência (PostgreSQL)
-
-### Contexto de negócio
-
-O cenário do challenge descreve uma oficina que opera com planilhas e processos manuais. Isso gera problemas concretos que a persistência precisa resolver:
-
-- **Perda de histórico:** uma OS ligada ao cliente e ao veículo deve permanecer consultável mesmo após a entrega - o dono pode voltar meses depois com o mesmo carro.
-- **Concorrência no estoque:** quando o cliente aprova o orçamento, as peças são debitadas; duas aprovações simultâneas não podem consumir o mesmo item sem saldo.
-- **Identificadores únicos no negócio:** CPF/CNPJ, placa, SKU e número da OS são chaves naturais do domínio - duplicatas quebram operação e auditoria.
-- **Valores monetários confiáveis:** orçamento, preços de serviço e peças precisam de precisão decimal estável, sem erro de arredondamento.
-- **Rastreabilidade do fluxo:** cada transição de status da OS (`received` → `delivered`) registra timestamps usados em métricas operacionais (ex.: tempo médio de execução).
-
-Esses requisitos apontam a um modelo **fortemente relacional**, com **consistência transacional** e **restrições no banco**, não apenas validações na aplicação.
-
-### Requisitos derivados para a camada de dados
-
-| Requisito de negócio | Exigência técnica no banco |
-| --- | --- |
-| Cliente → veículos → OS → itens | Relacionamentos com foreign keys |
-| Débito de estoque na aprovação | Transação ACID + lock de linha |
-| Sem CPF/placa/SKU duplicado | Índices únicos |
-| Orçamento correto em centavos | `DECIMAL`, não `FLOAT` |
-| Consulta por status e documento | Índices em colunas de filtro |
-| Histórico auditável da OS | Registros persistentes, sem “documento solto” |
-
-### Alternativas consideradas
-
-| Opção | Por que não foi escolhida |
-| --- | --- |
-| **SQLite** | Adequado para protótipo local, mas concorrência de escrita limitada. O fluxo de aprovação usa `Part.lock` e débito transacional - cenário sensível quando vários operadores e clientes interagem ao mesmo tempo. Não é o padrão de produção para APIs multiusuário. |
-| **MySQL / MariaDB** | Viável tecnicamente, mas o ecossistema Rails + PostgreSQL é mais homogêneo (tipos, migrations, ferramentas). Para este MVP, o ganho de trocar não compensa o custo de divergir do stack mais comum em projetos Rails. |
-| **MongoDB / NoSQL** | O domínio é relacional por natureza (agregado da OS referencia cliente, veículo, catálogo e peças). Modelar isso em documentos exige duplicação ou joins na aplicação, enfraquecendo integridade referencial e consistência de estoque. |
-| **Redis / cache como fonte primária** | Excelente para cache ou filas, mas não substitui persistência durável e transacional do histórico de OS e movimentação de estoque. |
-
-### Decisão: PostgreSQL 16
-
-PostgreSQL atende os requisitos de negócio e técnicos do MVP com o menor risco para um monolito Rails.
-
-**Fundamento de negócio**
-
-- Garante que **uma OS nunca fica “órfã”**: foreign keys entre `customers`, `vehicles`, `service_orders` e `service_order_items` impedem apagar ou referenciar entidades inconsistentes - o histórico do cliente no negócio fica preservado.
-- O débito de estoque na aprovação (`ApproveBudget`) roda dentro de `ActiveRecord::Base.transaction` com `Part.lock`: se o saldo não cobre a quantidade, a transação falha e **nem o status da OS nem o estoque ficam inconsistentes** - evita prometer um reparo sem peça disponível.
-- Índices únicos em `document`, `plate`, `sku`, `number` e `public_token` espelham **regras operacionais da oficina** (um CPF, uma placa, um SKU, um número de OS).
-- Timestamps (`execution_started_at`, `finished_at`, etc.) ficam no mesmo registro da OS, permitindo métricas como tempo médio de execução sem reconstruir histórico manualmente.
-
-**Fundamento técnico**
-
-- **ACID e locking:** suporte nativo a transações e `SELECT … FOR UPDATE` (usado via `lock` no ActiveRecord) para concorrência segura no estoque.
-- **Integridade referencial:** constraints declaradas no schema (`add_foreign_key` em todas as relações do domínio).
-- **Tipos adequados ao domínio:** `decimal(12,2)` para dinheiro; `string` com índices para identificadores de negócio.
-- **Stack Rails:** adapter `postgresql` nativo, `db:prepare` no Docker, migrations e `schema.rb` versionados - onboarding e CI simples.
-- **Evolução sem troca de banco:** JSONB para campos flexíveis futuros, views/materialized views para relatórios, réplicas de leitura e particionamento se a oficina escalar.
-
-### Como isso aparece no código
-
-```ruby
-# Aprovação: transação + lock de linha antes do débito
-ActiveRecord::Base.transaction do
-  part = Part.lock.find(item.part_id)
-  StockControl.new(part).debit!(item.quantity)
-  order.transition_to!(Status::IN_EXECUTION)
-end
+```mermaid
+flowchart LR
+  dev[Desenvolvedor] --> actions[GitHub Actions]
+  actions --> testes[RSpec]
+  actions --> imagem[Imagem Docker]
+  terraform[Terraform] --> kind[Cluster kind]
+  actions --> kind
+  terraform --> postgres[(PostgreSQL)]
+  kind --> api[API Rails]
+  kind --> postgres
+  kind --> mailpit[Mailpit]
+  hpa[HPA] --> api
+  operador[Operador JWT] --> api
+  externo[Sistema externo] --> api
+  api --> postgres
+  api --> mailpit
 ```
 
-No schema: FKs em todas as entidades do fluxo da OS, índice em `status` para listagens operacionais e unicidade nos identificadores de negócio.
-
-### Trade-offs aceitos
-
-- **Monolito com um banco:** simplicidade operacional no MVP; microserviços ou CQRS não são necessários na Fase 1.
-- **PostgreSQL exige container/serviço dedicado:** custo mínimo de infra frente à robustez; o `docker-compose.yml` já provisiona `postgres:16-alpine` com volume persistente.
-- **Modelo normalizado:** joins em consultas, mas consistência e auditoria superam a conveniência de documentos aninhados para este domínio.
-
-## Arquitetura em camadas (DDD leve)
-
-| Camada | Pasta | Responsabilidade |
+| Parte | Onde está | Função |
 | --- | --- | --- |
-| Domínio | `app/lib/domain` | Regras puras: CPF/CNPJ, placa, máquina de status, orçamento, estoque |
-| Aplicação | `app/lib/use_cases` | Casos de uso (criar OS, enviar orçamento, aprovar, finalizar) |
-| Infra | `app/models`, `db` | Persistência ActiveRecord |
-| Interface | `app/controllers`, `app/serializers` | HTTP REST + JWT |
+| Domínio | `app/lib/domain` | CPF/CNPJ, placa, status, fila operacional, estoque, orçamento |
+| Casos de uso | `app/lib/use_cases` | Abrir OS, transições, notificação externa, e-mail, listagem |
+| Persistência | `app/models`, `db` | ActiveRecord e PostgreSQL |
+| Interface | `app/controllers`, `app/mailers` | HTTP, JWT, webhook e e-mail |
+| Execução local | `Dockerfile`, `docker-compose.yml` | API, PostgreSQL e Mailpit |
+| Cluster | `k8s/` | Namespace, ConfigMap, Secret, banco, API, Mailpit, HPA e metrics-server |
+| Infra | `infra/` | Cluster kind e deploy do PostgreSQL |
+| Pipeline | `.github/workflows/ci-cd.yml` | Testes, imagem, Terraform, manifestos e fumaça da API |
 
-## Requisitos
+### Fluxo de deploy
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (inclui Docker Compose)
-- Git
+1. O push dispara a pipeline.
+2. O job de testes sobe PostgreSQL, prepara o schema e roda o RSpec.
+3. O job de deploy gera a imagem `oficina-api:local`.
+4. O Terraform cria o cluster kind e aplica o PostgreSQL.
+5. A imagem entra no cluster com `kind load`.
+6. `k8s/apply.sh` aplica ConfigMap, Secret, banco, Mailpit, API, HPA e metrics-server.
+7. A pipeline carrega o seed de demonstração, faz login e consulta a fila.
 
-Para rodar sem container (opcional): Ruby 3.3.6, PostgreSQL 16 e Bundler. Copie `.env.example` para `.env` e ajuste as variáveis.
+No computador, a mesma sequência está nos comandos de Kubernetes abaixo.
 
-## Primeira execução (Docker)
+## APIs desta fase
 
-### 1. Clonar o repositório
+Documentação interativa: [http://localhost:3000/api-docs](http://localhost:3000/api-docs) no Compose e [http://localhost:30080/api-docs](http://localhost:30080/api-docs) no cluster. A collection OpenAPI está em `swagger/v1/swagger.yaml`.
+
+| Fluxo | Método | Quem chama |
+| --- | --- | --- |
+| Abrir OS | `POST /api/v1/admin/service_orders` | Operador, com JWT |
+| Consultar status | `GET /api/v1/public/service_orders/:public_token` | Cliente |
+| Fila operacional | `GET /api/v1/admin/service_orders` | Operador, com JWT |
+| Notificação de orçamento | `POST /api/v1/integrations/budget_notifications` | Sistema externo, header `X-Integration-Token` |
+
+A fila administrativa ordena assim: **Em execução**, **Aguardando aprovação**, **Em diagnóstico**, **Recebida**. Dentro de cada status, a OS mais antiga vem primeiro. Finalizada e entregue continuam no banco e na consulta pública do cliente, e saem só dessa listagem.
+
+Aprovação e recusa públicas da fase 1 continuam em `/api/v1/public/service_orders/:public_token/approve` e `/reject`. O endpoint novo é a notificação externa:
 
 ```bash
-git clone https://github.com/derektsc/Oficina-Tech-Challenge.git
-cd Oficina-Tech-Challenge
+curl -X POST http://localhost:3000/api/v1/integrations/budget_notifications \
+  -H "Content-Type: application/json" \
+  -H "X-Integration-Token: local-dev-integration-token" \
+  -d '{"number":"OS-20240819-0001","decision":"approved","external_reference":"crm-100"}'
 ```
 
-### 2. Subir os containers
+`decision` aceita `approved` ou `rejected`. A OS precisa estar em **Aguardando aprovação**. Cada transição, inclusive a abertura, envia e-mail para o endereço do cliente.
+
+## Execução local
+
+Requisitos: Docker com Compose.
 
 ```bash
 docker compose up --build
-```
-
-Na **primeira** subida, o build da imagem pode levar alguns minutos. O entrypoint executa `db:prepare` automaticamente (cria o banco e roda as migrations). Aguarde até ver algo como `Listening on http://0.0.0.0:3000` nos logs.
-
-> **Windows:** o projeto usa bind mount (`.:app`). O entrypoint corrige CRLF nos scripts `bin/*` na subida - não é necessário alterar nada manualmente.
-
-### 3. Carregar dados de demonstração
-
-Com os containers rodando, em **outro terminal**:
-
-```bash
 docker compose exec app bundle exec rails db:seed
 ```
-
-Isso cria o usuário admin, um cliente, veículo, serviços do catálogo e peças com estoque.
-
-### 4. Validar que está funcionando
 
 | Recurso | URL |
 | --- | --- |
 | API | http://localhost:3000 |
-| Swagger (documentação interativa) | http://localhost:3000/api-docs |
+| Swagger | http://localhost:3000/api-docs |
 | Healthcheck | http://localhost:3000/up |
-
-No Swagger, faça login em `POST /api/v1/auth/login` com as credenciais abaixo e use o token retornado no botão **Authorize** (formato: `Bearer <token>`).
-
-### Credenciais de seed
+| E-mails (Mailpit) | http://localhost:8025 |
 
 | Campo | Valor |
 | --- | --- |
 | E-mail | `admin@oficina.test` |
 | Senha | `oficina123` |
+| Token de integração | `local-dev-integration-token` |
 
-### Comandos úteis no dia a dia
+No Swagger, autorize o JWT como `Bearer <token>`.
 
 ```bash
-# Parar os containers
+docker compose --profile test run --rm test
 docker compose down
-
-# Parar e remover volumes (reset completo do banco)
-docker compose down -v
-
-# Ver logs da aplicação
-docker compose logs -f app
 ```
 
-## Fluxo rápido da OS
+## Deploy em Kubernetes
 
-1. `POST /api/v1/auth/login` → obter JWT.
-2. `POST /api/v1/admin/service_orders` com cliente (CPF), veículo e itens.
-3. `POST /api/v1/admin/service_orders/:id/start_diagnosis`
-4. `POST /api/v1/admin/service_orders/:id/send_budget`
-5. Cliente consulta `GET /api/v1/public/service_orders/:public_token`
-6. Cliente aprova `POST /api/v1/public/service_orders/:public_token/approve` (debita estoque)
-7. Oficina finaliza e entrega: `.../finish` e `.../deliver`
-8. Métrica: `GET /api/v1/admin/metrics/average_execution_time`
+O cluster é Kubernetes na sua máquina, criado com kind. Não usa AWS. O `docker compose` da seção anterior continua sendo o ambiente de desenvolvimento, na porta 3000. Esta seção é o que o vídeo precisa mostrar além do Compose.
 
-Todas as rotas `/api/v1/admin/*` exigem `Authorization: Bearer <token>`.
+Requisitos: Docker, kubectl e os binários locais `kind` e `terraform` em `.tools/`. No terminal:
+
+```bash
+export PATH="$PWD/.tools:$PATH"
+```
+
+```bash
+docker build --target runtime --build-arg BUNDLE_WITHOUT="development test" -t oficina-api:local .
+terraform -chdir=infra init
+terraform -chdir=infra apply
+kind load docker-image oficina-api:local --name oficina
+bash k8s/apply.sh
+kubectl -n oficina exec deploy/oficina-api -- env SEED_DEMO=true bundle exec rails db:seed
+```
+
+| Recurso | URL |
+| --- | --- |
+| API | http://localhost:30080 |
+| Swagger | http://localhost:30080/api-docs |
+| Mailpit | http://localhost:30025 |
+
+`terraform apply` cria o cluster e o PostgreSQL. `k8s/apply.sh` aplica o restante e espera a API ficar pronta. Para remover o cluster: `terraform -chdir=infra destroy`.
+
+O Secret em `k8s/secret.yaml` usa senhas de demonstração, iguais ao Compose. Não use esses valores fora do challenge.
+
+### O que o Terraform cria
+
+| Recurso | Arquivo | Efeito |
+| --- | --- | --- |
+| Cluster kind `oficina` | `infra/main.tf` e `infra/kind-config.yaml` | Um nó control-plane, com as portas 30080 e 30025 publicadas no host |
+| Namespace, Secret e PostgreSQL | `k8s/namespace.yaml`, `k8s/secret.yaml`, `k8s/postgres.yaml` | Banco `oficina_production` com volume persistente |
+
+### O que os manifestos acrescentam
+
+| Manifesto | Conteúdo |
+| --- | --- |
+| `k8s/configmap.yaml` | Ambiente não sensível, inclusive SMTP do Mailpit |
+| `k8s/secret.yaml` | URL do banco, JWT, `SECRET_KEY_BASE` e token de integração |
+| `k8s/mailpit.yaml` | Caixa de e-mail da demonstração |
+| `k8s/app.yaml` | Deployment e Service NodePort 30080 da API |
+| `k8s/hpa.yaml` | 1 a 5 réplicas, por CPU (60%) e memória (80%) |
+| `k8s/metrics-server.yaml` | Métricas do HPA, com `--kubelet-insecure-tls` para o kind |
+
+### Escalar na demonstração
+
+Rode o seed antes. Para várias OS ao mesmo tempo:
+
+```bash
+BASE_URL=http://localhost:30080 bash script/simulate_peak.sh
+```
+
+Para o HPA aumentar as réplicas, gere CPU e acompanhe. O metrics-server leva cerca de um minuto para publicar métricas.
+
+```bash
+kubectl -n oficina top pods
+bash script/stress_cpu.sh
+kubectl -n oficina get hpa oficina-api -w
+```
+
+## CI/CD
+
+O arquivo `.github/workflows/ci-cd.yml` faz, em todo push:
+
+- build da aplicação Ruby e execução dos testes;
+- build da imagem Docker de runtime;
+- `terraform apply` do cluster e do banco;
+- `kind load` da imagem;
+- aplicação dos manifestos, inclusive o banco e o HPA;
+- seed, login e consulta da fila dentro do cluster.
+
+Pull request roda só os testes. O deploy aparece no push e também pode ser disparado manualmente em **Run workflow**.
 
 ## Testes
+
+A suíte cobre o ciclo da fase 1 e, na fase 2, a ordem da fila, a exclusão lógica de finalizadas e entregues, o e-mail de status e a notificação externa (token inválido, aprovação com débito de estoque e recusa).
 
 ```bash
 docker compose --profile test run --rm test
 ```
 
-A suíte usa RSpec + SimpleCov (meta mínima de 80% nos arquivos instrumentados).
+## Vídeo e entrega no portal
 
-## Segurança
+O que falar, em ordem e com o texto pronto, está em [ROTEIRO-VIDEO-FASE2.md](ROTEIRO-VIDEO-FASE2.md).
 
-```bash
-docker compose run --rm --no-deps app bundle exec brakeman -q
-docker compose run --rm --no-deps app bundle exec bundle-audit check --update
+O documento para o portal, no mesmo formato da fase 1, é [Grupo110-Fase2-Derek-TechChallenge.pdf](Grupo110-Fase2-Derek-TechChallenge.pdf).
+
+Grave um vídeo de até 15 minutos no YouTube ou Vimeo, público ou não listado, e substitua a linha abaixo.
+
+**Vídeo da fase 2:** cole aqui o link depois de publicar.
+
+No portal do aluno, envie o PDF da fase 2. Ele já traz o link do GitHub e o desenho da arquitetura. Depois de publicar o vídeo, troque a linha do vídeo nesse PDF. O repositório precisa estar compartilhado com o usuário **soat-architecture**.
+
+Diagramas de domínio da fase 1: [Miro](https://miro.com/app/board/uXjVHsDM-SM=/?share_link_id=386665499309). Vídeo da fase 1: [YouTube](https://www.youtube.com/watch?v=RyrMkk2pN3Q). O PDF de arquitetura da fase 1 segue em `Grupo110-Fase1-Derek-TechChallenge-ArquiteturaSoftware.pdf`.
+
+## Persistência
+
+O banco continua sendo PostgreSQL 16. A OS, o cliente, o veículo e o estoque são relacionais: a aprovação debita peça dentro de transação com lock, e CPF, placa, SKU e número da OS são únicos. O Terraform e os manifestos sobem esse mesmo banco dentro do cluster, com volume persistente.
+
+## Estrutura
+
 ```
-
-## Estrutura de pastas relevante
-
-```
-app/lib/domain       regras de negócio
-app/lib/use_cases    orquestração dos fluxos
-app/models           persistência
-app/controllers      API REST
-swagger/v1           OpenAPI
+app/lib/domain          regras de negócio, inclusive a fila operacional
+app/lib/use_cases       abertura, transições, e-mail e notificação externa
+app/mailers             e-mail de status
+k8s/                    manifestos e apply.sh
+infra/                  Terraform do cluster e do banco
+.github/workflows/      pipeline
+script/                 pico de OS e carga de CPU para o HPA
+swagger/v1/swagger.yaml collection OpenAPI
 ```

@@ -1,0 +1,9 @@
+Olá <%= @order.customer.name %>,
+
+A ordem de serviço <%= @order.number %> foi atualizada.
+
+Status: <%= @order.status_label %>
+Veículo: <%= @order.vehicle.plate %> (<%= @order.vehicle.brand %> <%= @order.vehicle.model %>)
+Orçamento: R$ <%= @order.budget_total %>
+
+Acompanhe pelo identificador <%= @order.public_token %>.

@@ -12,6 +12,7 @@ module UseCases
 
         @order.recalculate_budget!
         @order.transition_to!(::Domain::ServiceOrders::Status::AWAITING_APPROVAL)
+        NotifyStatus.call(@order)
         @order
       end
     end

@@ -8,18 +8,20 @@ module UseCases
       end
 
       def call
-        ActiveRecord::Base.transaction do
+        order = ActiveRecord::Base.transaction do
           customer = find_or_create_customer
           vehicle = find_or_create_vehicle(customer)
-          order = ServiceOrder.create!(
+          created = ServiceOrder.create!(
             customer: customer,
             vehicle: vehicle,
             notes: @params[:notes]
           )
-          Array(@params[:items]).each { |item| BuildItem.call(order, item) }
-          order.recalculate_budget!
-          order.reload
+          Array(@params[:items]).each { |item| BuildItem.call(created, item) }
+          created.recalculate_budget!
+          created.reload
         end
+        NotifyStatus.call(order)
+        order
       end
 
       private

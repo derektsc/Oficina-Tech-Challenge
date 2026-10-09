@@ -32,6 +32,10 @@ Rails.application.routes.draw do
           end
         end
       end
+
+      namespace :integrations do
+        post "budget_notifications", to: "budget_notifications#create"
+      end
     end
   end
 end

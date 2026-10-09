@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oficina-config
+  namespace: oficina
+data:
+  RAILS_ENV: production
+  RAILS_LOG_TO_STDOUT: "true"
+  RAILS_LOG_LEVEL: info
+  PORT: "3000"
+  SMTP_ADDRESS: mailpit
+  SMTP_PORT: "1025"
+  MAIL_FROM: "Oficina <oficina@oficina.local>"

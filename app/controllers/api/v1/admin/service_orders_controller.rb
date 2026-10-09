@@ -2,8 +2,7 @@
 
 class Api::V1::Admin::ServiceOrdersController < Api::V1::Admin::BaseController
   def index
-    orders = ServiceOrder.includes(:customer, :vehicle, :service_order_items).order(created_at: :desc)
-    orders = orders.where(status: params[:status]) if params[:status].present?
+    orders = UseCases::ServiceOrders::ListOperational.new(status: params[:status]).call
     render json: orders.map { |order| ServiceOrderSerializer.new(order).as_json }
   end
 

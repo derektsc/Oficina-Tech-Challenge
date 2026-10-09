@@ -1,17 +1,26 @@
 openapi: 3.0.1
 info:
   title: API Oficina Mecânica
-  description: MVP do Sistema Integrado de Atendimento e Execução de Serviços.
-  version: 1.0.0
+  description: |
+    Fase 2 do Sistema Integrado de Atendimento. A API abre a ordem de serviço,
+    consulta o status, recebe aprovação ou recusa externa do orçamento, lista a
+    fila operacional e avisa o cliente por e-mail a cada mudança de status.
+  version: 2.0.0
 servers:
   - url: http://localhost:3000
-    description: Local
+    description: Docker Compose
+  - url: http://localhost:30080
+    description: Kubernetes (NodePort)
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    integrationToken:
+      type: apiKey
+      in: header
+      name: X-Integration-Token
   schemas:
     Error:
       type: object
@@ -211,7 +220,11 @@ paths:
     get:
       tags: [Admin - Ordens de Serviço]
       security: [{ bearerAuth: [] }]
-      summary: Listar OS
+      summary: Listar fila operacional de OS
+      description: |
+        Ordena por Em execução, Aguardando aprovação, Em diagnóstico e Recebida.
+        Dentro de cada status, as mais antigas vêm primeiro.
+        OS finalizadas e entregues saem da listagem, sem apagar o registro.
       parameters:
         - in: query
           name: status
@@ -320,6 +333,37 @@ paths:
           schema: { type: integer }
       responses:
         "200": { description: Entregue }
+  /api/v1/integrations/budget_notifications:
+    post:
+      tags: [Integrações]
+      security: [{ integrationToken: [] }]
+      summary: Receber aprovação ou recusa externa do orçamento
+      description: |
+        Notificação de um sistema externo. Informe number, public_token ou service_order_id.
+        decision aceita approved ou rejected.
+      parameters:
+        - in: header
+          name: X-Integration-Token
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approved, rejected] }
+                number: { type: string, example: OS-20240819-0001 }
+                service_order_number: { type: string }
+                public_token: { type: string }
+                service_order_id: { type: integer }
+                external_reference: { type: string }
+      responses:
+        "200": { description: Orçamento aplicado e status atualizado }
+        "401": { description: Token de integração inválido }
+        "422": { description: Decisão ou transição inválida }
   /api/v1/admin/metrics/average_execution_time:
     get:
       tags: [Admin - Métricas]

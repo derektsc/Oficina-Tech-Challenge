@@ -1,4 +1,5 @@
-return unless Rails.env.development?
+return if Rails.env.test?
+return if Rails.env.production? && ENV["SEED_DEMO"] != "true"
 
 admin = User.find_or_create_by!(email: "admin@oficina.test") do |user|
   user.name = "Administrador"

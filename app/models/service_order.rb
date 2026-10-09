@@ -18,6 +18,10 @@ class ServiceOrder < ApplicationRecord
     joins(:customer).where(customers: { document: digits })
   }
 
+  scope :operational, -> {
+    where.not(status: ::Domain::ServiceOrders::OperationalQueue::EXCLUDED)
+  }
+
   def budget
     ::Domain::ServiceOrders::Budget.new(service_order_items)
   end

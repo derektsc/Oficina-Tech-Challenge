@@ -8,11 +8,13 @@ module UseCases
       end
 
       def call
-        ActiveRecord::Base.transaction do
+        order = ActiveRecord::Base.transaction do
           debit_parts!
           @order.transition_to!(::Domain::ServiceOrders::Status::IN_EXECUTION)
           @order
         end
+        NotifyStatus.call(order)
+        order
       end
 
       private

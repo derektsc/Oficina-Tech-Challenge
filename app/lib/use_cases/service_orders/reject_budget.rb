@@ -10,6 +10,7 @@ module UseCases
       def call
         @order.rejected_at = Time.current
         @order.transition_to!(::Domain::ServiceOrders::Status::IN_DIAGNOSIS)
+        NotifyStatus.call(@order)
         @order
       end
     end
